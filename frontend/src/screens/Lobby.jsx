@@ -46,7 +46,7 @@ export default function Lobby({ onTicket }) {
           disabled={busy}
           onClick={() => run(() => createRoom(displayName))}
         >
-          방 만들기
+          {busy ? '서버에 연결하는 중…' : '방 만들기'}
         </button>
 
         <div className="divider"><span>또는</span></div>
@@ -67,7 +67,7 @@ export default function Lobby({ onTicket }) {
           disabled={busy || code.length !== 6}
           onClick={() => run(() => joinRoom(code, displayName))}
         >
-          입장하기
+          {busy ? '입장하는 중…' : '입장하기'}
         </button>
 
         {error && <p className="error">{error}</p>}

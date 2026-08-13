@@ -42,7 +42,7 @@ from app.battle import (
 from app.config import settings
 from app.dealing import deal_hand
 from app.db import SessionLocal
-from app.models import Pokemon, Room, RoundRecord
+from app.models import Pokemon, Room, RoomPlayer, RoundRecord, TypeInfo
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +100,8 @@ class Game:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     _timer_task: asyncio.Task | None = None
     _pacing_task: asyncio.Task | None = None
+    # DB 적재를 순서대로 이어 붙이는 체인. 자세한 건 GameManager.schedule_db 참조.
+    db_task: asyncio.Task | None = None
 
     def opponent_of(self, slot: int) -> Player | None:
         return self.players.get(1 - slot)
@@ -114,17 +116,36 @@ class GameManager:
 
     def __init__(self) -> None:
         self._games: dict[str, Game] = {}
-        self._pool: list[Pokemon] = []  # 로스터 캐시 (서버 시작 시 1회 로드)
+        self._pool: list[Pokemon] = []   # 로스터 캐시 (서버 시작 시 1회 로드)
+        self._types: list[dict] = []     # 타입 참조 데이터 캐시
 
     # ---------- 로스터 ----------
 
     async def load_pool(self) -> None:
+        """로스터와 타입 참조 데이터를 시작 시 한 번만 메모리에 올린다.
+
+        게임 중에는 DB 를 읽지 않는다. 딜링마다 40행을 조회할 이유가 없고,
+        디스크가 느린 환경에서 그게 그대로 지연이 된다.
+        """
         async with SessionLocal() as session:
             rows = (await session.execute(select(Pokemon).order_by(Pokemon.dex_id))).scalars().all()
+            types = (
+                (await session.execute(select(TypeInfo).order_by(TypeInfo.name))).scalars().all()
+            )
+
         self._pool = [r for r in rows if len(r.moves) > 0]
+        self._types = [
+            {"name": t.name, "name_ko": t.name_ko, "icon_url": t.icon_url,
+             "symbol_url": t.symbol_url}
+            for t in types
+        ]
         skipped = len(rows) - len(self._pool)
-        logger.info("로스터 %d마리 로드됨%s", len(self._pool),
+        logger.info("로스터 %d마리 / 타입 %d종 로드됨%s", len(self._pool), len(self._types),
                     f" (기술 없어 제외 {skipped}마리)" if skipped else "")
+
+    @property
+    def types(self) -> list[dict]:
+        return self._types
 
     @property
     def pool_size(self) -> int:
@@ -136,6 +157,62 @@ class GameManager:
         game = Game(code=code, room_id=room_id)
         self._games[code] = game
         return game
+
+    # ---------- DB 적재 (전부 백그라운드) ----------
+
+    def schedule_db(self, game: Game, make_coro) -> None:
+        """DB 쓰기를 요청/소켓 처리와 분리해 뒤에서 순서대로 실행한다.
+
+        **왜 기다리지 않는가**: 이 게임의 진행에 DB 는 필요 없다. 방·손패·판정은 전부
+        메모리에 있고, DB 는 나중에 들여다볼 기록일 뿐이다. 그런데 방 생성에서 커밋을
+        await 하면 디스크가 느린 순간 사용자는 로비에서 몇십 초를 멈춘 채 기다리게 된다.
+        (실제로 NAS 디스크가 포화됐을 때 방 생성이 23초 걸렸다.)
+
+        **왜 순서를 지키는가**: rounds 는 rooms 를 참조한다(FK). 그냥 각자 태스크로 던지면
+        방 INSERT 보다 라운드 INSERT 가 먼저 도착해 실패할 수 있다. 그래서 방마다
+        태스크를 하나의 체인으로 이어 붙여 순서를 보장한다.
+        """
+        previous = game.db_task
+
+        async def runner() -> None:
+            if previous is not None:
+                try:
+                    await previous
+                except Exception:
+                    pass  # 앞 단계가 실패해도 뒤 단계는 시도한다
+            try:
+                await make_coro()
+            except Exception:
+                logger.exception("DB 적재 실패 (room=%s)", game.code)
+
+        game.db_task = asyncio.create_task(runner())
+
+    def persist_room(self, game: Game, display_name: str, token: str) -> None:
+        async def work() -> None:
+            async with SessionLocal() as session:
+                room = Room(id=game.room_id, code=game.code, status="waiting")
+                room.players.append(
+                    RoomPlayer(slot=0, display_name=display_name, player_token=token)
+                )
+                session.add(room)
+                await session.commit()
+
+        self.schedule_db(game, work)
+
+    def persist_player(self, game: Game, slot: int, display_name: str, token: str) -> None:
+        async def work() -> None:
+            async with SessionLocal() as session:
+                session.add(
+                    RoomPlayer(
+                        room_id=game.room_id,
+                        slot=slot,
+                        display_name=display_name,
+                        player_token=token,
+                    )
+                )
+                await session.commit()
+
+        self.schedule_db(game, work)
 
     def get(self, code: str) -> Game | None:
         return self._games.get(code)
@@ -592,8 +669,9 @@ class GameManager:
                 },
             )
 
-        asyncio.create_task(
-            self._persist_round(
+        self.schedule_db(
+            game,
+            lambda: self._persist_round(
                 room_id=game.room_id,
                 game_no=game.game_no,
                 round_no=game.round_no,
@@ -603,7 +681,7 @@ class GameManager:
                 hp0=p0.fighter.hp,
                 hp1=p1.fighter.hp,
                 winner_slot=winner_slot,
-            )
+            ),
         )
 
         if game.round_no >= settings.total_rounds:
@@ -643,7 +721,7 @@ class GameManager:
                     "game_over",
                     {"board": {"you": me.wins, "opponent": opp.wins}, "result": result},
                 )
-        await self._mark_room_finished(game.room_id)
+        self.schedule_db(game, lambda: self._mark_room_finished(game.room_id))
 
     # ---------- DB 적재 ----------
 

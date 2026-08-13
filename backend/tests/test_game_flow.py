@@ -106,7 +106,7 @@ async def manager(monkeypatch):
     pending = [
         task
         for g in mgr._games.values()
-        for task in (g._timer_task, g._pacing_task)
+        for task in (g._timer_task, g._pacing_task, g.db_task)
         if task and not task.done()
     ]
     for task in pending:
@@ -465,3 +465,85 @@ async def test_disconnect_notifies_the_opponent(manager):
     game, p0, _, ws0, ws1 = await setup_match(manager)
     await manager.detach(game, p0, ws0)
     assert ws1.of_type("opponent_left") == [{}]
+
+
+# ---------- DB 를 기다리지 않는다 ----------
+
+async def test_game_runs_even_when_every_db_write_hangs(monkeypatch):
+    """DB 가 완전히 멈춰 있어도 게임은 정상 진행돼야 한다.
+
+    방·손패·판정은 전부 메모리에 있고 DB 는 나중에 볼 기록일 뿐이다.
+    (실제로 NAS 디스크가 포화됐을 때 방 생성이 23초 걸려 사용자에겐 멈춘 것처럼 보였다.)
+    """
+    mgr = GameManager()
+    mgr._pool = POOL
+    monkeypatch.setattr(game_module, "ROUND_INTERMISSION", 0.0)
+    monkeypatch.setattr(game_module, "TURN_INTERMISSION", 0.0)
+    monkeypatch.setattr(settings, "round_timeout_seconds", 0)
+    monkeypatch.setattr(settings, "turn_timeout_seconds", 0)
+
+    started = []
+
+    async def never_finishes():
+        started.append(1)
+        await asyncio.Event().wait()  # 영원히 안 끝나는 DB 쓰기
+
+    game = mgr.create_game("SLOWDB", uuid.uuid4())
+    mgr.schedule_db(game, never_finishes)  # 방 INSERT 가 걸려 있는 상태
+
+    p0 = mgr.add_player(game, 0, "t0", "앨리스")
+    p1 = mgr.add_player(game, 1, "t1", "밥")
+    ws0, ws1 = FakeSocket(), FakeSocket()
+    await mgr.attach(game, p0, ws0)
+    await mgr.attach(game, p1, ws1)
+    await mgr.handle_message(game, p0, {"type": "ready"})
+    await mgr.handle_message(game, p1, {"type": "ready"})
+    await settle()
+
+    # 딜링이 됐다 = DB 가 막혀 있어도 게임은 굴러간다
+    assert len(ws0.last("deal")["hand"]) == settings.hand_size
+
+    await send_cards(mgr, game, p0, p1)
+    await finish_round(mgr, game, p0, p1)
+    assert ws0.last("round_result") is not None
+    assert started == [1]  # DB 체인은 첫 단계에서 멈춰 있다
+
+    game.db_task.cancel()
+    await asyncio.gather(game.db_task, return_exceptions=True)
+
+
+async def test_db_writes_are_serialised_per_room(manager):
+    """rounds 는 rooms 를 참조(FK)하므로 순서가 뒤집히면 안 된다."""
+    game = manager.create_game("ORDER1", uuid.uuid4())
+    order = []
+
+    def step(name, delay):
+        async def work():
+            await asyncio.sleep(delay)
+            order.append(name)
+        return work
+
+    manager.schedule_db(game, step("room", 0.03))    # 느린 첫 단계
+    manager.schedule_db(game, step("player", 0.0))
+    manager.schedule_db(game, step("round", 0.0))
+    await game.db_task
+
+    assert order == ["room", "player", "round"]
+
+
+async def test_db_failure_does_not_break_the_chain(manager):
+    """앞 단계가 터져도 뒤 단계는 계속 시도한다 — 기록 실패로 게임을 멈추진 않는다."""
+    game = manager.create_game("ORDER2", uuid.uuid4())
+    done = []
+
+    async def boom():
+        raise RuntimeError("디스크 터짐")
+
+    async def ok():
+        done.append("ok")
+
+    manager.schedule_db(game, boom)
+    manager.schedule_db(game, ok)
+    await game.db_task
+
+    assert done == ["ok"]
