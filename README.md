@@ -75,6 +75,57 @@ http://localhost:5173 접속. `/api` 와 `/ws` 는 Vite 프록시가 백엔드�
 
 ---
 
+## 배포된 곳
+
+| 레이어 | 위치 | 주소 |
+|---|---|---|
+| 프론트 | Vercel (정적 빌드) | https://pokemon-card-battle-two.vercel.app |
+| 백엔드 | NAS Docker `nb-pokemon-api` (호스트 8012) | https://pokemon-api.han-david.com |
+| DB | NAS 공용 Postgres 16 의 `pokemon_battle` | — |
+
+**왜 백엔드를 Vercel 에 안 올렸나**: 진행 중인 게임 상태가 프로세스 메모리에 있고
+WebSocket 을 길게 붙들고 있어야 한다. 서버리스는 요청 단위로 뜨고 죽으므로 둘 다 안 맞는다.
+(`vercel link` 가 `backend/` 를 감지해 서버리스 서비스로 넣으려 하는데, `vercel.json` 에서 뺐다.)
+
+프론트는 빌드 시점에 `frontend/.env.production` 의 `VITE_API_BASE` 를 박아 넣는다.
+개발에서는 이 값이 비어 있고 Vite 프록시가 `/api`·`/ws` 를 `localhost:8000` 으로 넘긴다.
+
+### 백엔드 재배포
+
+```bash
+git archive HEAD:backend | ssh nas "tar -x -C /volume1/docker/nas-backend/pokemon-backend"
+ssh nas 'cd /volume1/docker/nas-backend && sudo -n /usr/local/bin/docker compose up -d --build --no-deps pokemon-api'
+ssh nas 'curl -s http://127.0.0.1:8012/health'
+```
+
+> 🔴 `--no-deps pokemon-api` 를 반드시 붙인다. 그 compose 파일에는 서비스가 15개 물려 있어서
+> 서비스명을 빼면 전부가 대상이 되고, `--remove-orphans` 가 붙으면 남의 서비스가 삭제된다.
+
+시딩은 컨테이너 안에서 한 번만:
+
+```bash
+ssh nas 'sudo -n /usr/local/bin/docker exec nb-pokemon-api python -m scripts.seed'
+```
+
+스키마를 바꿨다면 `--force` 로 다시 긁거나, 테이블을 지우고 다시 만들어야 한다
+(마이그레이션 도구를 안 쓰므로 `create_all` 은 기존 테이블을 바꾸지 않는다).
+
+### 프론트 재배포
+
+GitHub 연동이 걸려 있어 **main 에 push 하면 자동 배포**된다. 수동으로 하려면:
+
+```bash
+vercel deploy --prod --yes
+```
+
+### 도메인 주의
+
+Vercel 미리보기(preview) 배포는 매번 URL 이 달라서 백엔드 CORS 목록에 없다.
+미리보기에서 테스트하려면 그 URL 을 compose 의 `CORS_ORIGINS` 에 추가해야 한다.
+(WebSocket 은 CORS 대상이 아니라 그냥 붙지만, 방 생성 REST 가 막힌다.)
+
+---
+
 ## 테스트
 
 ```bash

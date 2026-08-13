@@ -2,6 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm --prefix frontend ci && npm --prefix frontend run build",
   "outputDirectory": "frontend/dist",
-  "installCommand": "echo 'frontend 안에서 설치한다'",
+  "installCommand": "echo skip-root-install",
   "framework": null
 }
