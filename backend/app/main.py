@@ -49,10 +49,17 @@ app = FastAPI(title="Pokémon Card Battle", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
+    allow_origin_regex=settings.cors_origin_regex or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ⚠️ CORS 는 **WebSocket 에 적용되지 않는다.**
+# 브라우저는 WS 핸드셰이크에 Origin 을 보내지만 프리플라이트가 없고,
+# 위 미들웨어도 HTTP 요청만 본다. 즉 이 게임의 소켓은 어느 오리진에서든 붙을 수 있다.
+# 그래도 안전한 이유는 방 코드만으로는 못 들어오고 **player_token 을 제시해야** 하기 때문이다.
+# (app/ws.py 의 find_player_by_token — 토큰은 방 생성/입장 REST 로만 발급된다.)
 
 app.include_router(pokemon_router.router)
 app.include_router(rooms_router.router)

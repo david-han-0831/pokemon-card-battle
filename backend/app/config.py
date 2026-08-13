@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://pkm:pkm@localhost:5433/pokemon_battle"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # 정확히 일치하는 목록(cors_origins)만으로는 Vercel 미리보기 배포를 못 받는다.
+    # 미리보기 URL 은 배포마다 해시가 바뀌기 때문(pokemon-card-battle-<해시>-<팀>.vercel.app).
+    # 그래서 패턴으로도 허용한다. 팀 슬러그까지 포함시켜 남의 프로젝트가 걸리지 않게 한다.
+    # 비워 두면 패턴 허용을 쓰지 않는다.
+    cors_origin_regex: str = ""
+
     # 제한시간(초). 0 이면 타이머 비활성화
     round_timeout_seconds: float = 30   # 포켓몬 선택
     turn_timeout_seconds: float = 20    # 기술 선택
