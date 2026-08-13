@@ -118,11 +118,28 @@ GitHub 연동이 걸려 있어 **main 에 push 하면 자동 배포**된다. 수
 vercel deploy --prod --yes
 ```
 
-### 도메인 주의
+### CORS — 미리보기 배포까지 받기
 
-Vercel 미리보기(preview) 배포는 매번 URL 이 달라서 백엔드 CORS 목록에 없다.
-미리보기에서 테스트하려면 그 URL 을 compose 의 `CORS_ORIGINS` 에 추가해야 한다.
-(WebSocket 은 CORS 대상이 아니라 그냥 붙지만, 방 생성 REST 가 막힌다.)
+Vercel 미리보기 배포는 URL 이 매번 바뀐다.
+
+```
+pokemon-card-battle-ag4cxan6u-davids-projects-2b1e0768.vercel.app   (배포 해시)
+pokemon-card-battle-git-main-davids-projects-2b1e0768.vercel.app    (브랜치 이름)
+```
+
+고정 목록으로는 못 받으므로 `CORS_ORIGIN_REGEX` 로 패턴 허용한다.
+**팀 슬러그까지 패턴에 넣어** 이름이 비슷한 남의 프로젝트가 통과하지 못하게 좁혔다.
+
+```
+^https://pokemon-card-battle-[a-z0-9-]+-davids-projects-[a-z0-9]+\.vercel\.app$
+```
+
+점(`.`)이 문자 클래스에 없어서 `...-evil.com-davids-projects-...` 같은 위장도 안 걸린다.
+경계 케이스는 `tests/test_cors.py` 가 고정한다.
+
+> ⚠️ **CORS 는 WebSocket 에 적용되지 않는다.** 브라우저가 Origin 을 보내긴 하지만
+> 프리플라이트가 없고 미들웨어도 HTTP 만 본다. 즉 소켓은 어느 오리진에서든 붙을 수 있다.
+> 그래도 안전한 이유는 방 코드만으로는 못 들어오고 **`player_token` 을 제시해야** 하기 때문이다.
 
 ---
 
