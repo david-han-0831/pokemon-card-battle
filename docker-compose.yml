@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pkm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pkm
+      POSTGRES_PASSWORD: pkm
+      POSTGRES_DB: pokemon_battle
+    # 호스트 5433 으로 노출 — 로컬에 다른 Postgres(5432)가 떠 있어도 안 부딪히게.
+    ports:
+      - "5433:5432"
+    volumes:
+      - pkm_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pkm -d pokemon_battle"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pkm_pgdata:

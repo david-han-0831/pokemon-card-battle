@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# 로컬 설정만 무시한다. frontend/.env.production 은 비밀이 아니라 커밋한다.
+.env
+.env.local
+.vercel/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# 에디터/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

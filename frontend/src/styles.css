@@ -1,0 +1,406 @@
+:root {
+  --bg: #070b16;
+  --panel: #111a2e;
+  --panel-2: #16223c;
+  --line: #24314f;
+  --text: #e8edfb;
+  --muted: #8b97b8;
+  --blue: #4b8bff;
+  --red: #ff5a7a;
+  --green: #5cff9d;
+  --gold: #ffd166;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Pretendard', system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; letter-spacing: 0.08em; }
+
+.loading {
+  display: grid; place-items: center; height: 100%; color: var(--muted);
+}
+
+/* ---------- 로비 ---------- */
+
+.lobby {
+  min-height: 100%;
+  display: grid;
+  place-content: center;
+  gap: 28px;
+  padding: 40px 20px;
+  background:
+    radial-gradient(900px 500px at 50% -10%, #1b2a52 0%, transparent 70%),
+    var(--bg);
+}
+
+.lobby__header { text-align: center; }
+.lobby__header h1 { margin: 0 0 8px; font-size: 36px; letter-spacing: -0.02em; }
+.lobby__header p { margin: 0; color: var(--muted); }
+
+.panel {
+  width: min(420px, 90vw);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 26px;
+  display: grid;
+  gap: 14px;
+}
+
+.field { display: grid; gap: 6px; }
+.field span { font-size: 13px; color: var(--muted); }
+.field input {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: var(--text);
+  font-size: 16px;
+  outline: none;
+}
+.field input:focus { border-color: var(--blue); }
+
+.btn {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+.btn:hover:not(:disabled) { background: #1d2c4c; }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn--primary { background: var(--blue); border-color: var(--blue); color: #04102b; }
+.btn--primary:hover:not(:disabled) { background: #6ba0ff; }
+
+.divider { display: grid; place-items: center; position: relative; margin: 4px 0; }
+.divider::before {
+  content: ''; position: absolute; inset: 50% 0 auto; height: 1px; background: var(--line);
+}
+.divider span {
+  position: relative; background: var(--panel); padding: 0 12px;
+  color: var(--muted); font-size: 12px;
+}
+
+.error { color: var(--red); font-size: 14px; margin: 0; }
+.lobby__hint { color: var(--muted); font-size: 13px; text-align: center; }
+
+/* ---------- 배틀 레이아웃 ---------- */
+
+.battle {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.topbar {
+  display: grid;
+  grid-template-columns: 160px 1fr 80px;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.topbar__room { display: grid; }
+.topbar__room .label { font-size: 11px; color: var(--muted); }
+.topbar__timer { text-align: right; }
+
+.timer { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.timer--urgent { color: var(--red); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.4; } }
+
+.scoreboard {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 20px;
+}
+.scoreboard__side { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
+.scoreboard__side--opp { justify-content: flex-start; }
+.scoreboard__side span { color: var(--muted); font-size: 14px; }
+.scoreboard__side strong { font-size: 26px; font-variant-numeric: tabular-nums; }
+.scoreboard__side strong { color: var(--blue); }
+.scoreboard__side--opp strong { color: var(--red); }
+.scoreboard__mid { font-size: 12px; letter-spacing: 0.14em; color: var(--muted); }
+
+/* ---------- 스테이지 ---------- */
+
+.stage-wrap { position: relative; min-height: 0; }
+.stage { position: absolute; inset: 0; }
+.stage canvas { display: block; width: 100%; height: 100%; }
+
+/* 스테이지 하단은 발판/링이 차지하므로 상태 텍스트는 위쪽에 둔다. */
+.stage-status {
+  position: absolute;
+  left: 50%; top: 14px;
+  transform: translateX(-50%);
+  display: grid; gap: 4px; justify-items: center;
+  font-size: 15px;
+  pointer-events: none;
+}
+.stage-status__hidden { font-size: 12px; color: var(--muted); }
+
+.banner {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(760px, 92%);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 26px;
+  background: rgba(9, 13, 26, 0.88);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  backdrop-filter: blur(6px);
+  animation: pop 0.25s ease-out;
+}
+@keyframes pop {
+  from { opacity: 0; transform: translate(-50%, -46%) scale(0.96); }
+}
+.banner--you { border-color: var(--green); }
+.banner--opponent { border-color: var(--red); }
+.banner--draw { border-color: var(--gold); }
+
+.banner__side { display: grid; gap: 6px; justify-items: start; }
+.banner__side--opp { justify-items: end; text-align: right; }
+.banner__score { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.banner__verdict { text-align: center; }
+.banner__verdict h2 { margin: 2px 0 0; font-size: 24px; }
+.banner__round { font-size: 11px; letter-spacing: 0.16em; color: var(--muted); }
+.banner__auto { font-size: 11px; color: var(--gold); }
+
+.mult { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+.mult--good { background: rgba(92, 255, 157, 0.15); color: var(--green); }
+.mult--bad { background: rgba(139, 151, 184, 0.15); color: var(--muted); }
+.mult--zero { background: rgba(255, 90, 122, 0.18); color: var(--red); }
+
+.overlay {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  background: rgba(7, 11, 22, 0.78);
+  backdrop-filter: blur(3px);
+}
+.overlay__card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 30px 36px;
+  display: grid; gap: 14px; justify-items: center;
+  text-align: center;
+  min-width: 320px;
+}
+.overlay__card h2 { margin: 0; }
+.overlay__card p { margin: 0; color: var(--muted); }
+
+.result--win { color: var(--green); font-size: 34px; }
+.result--lose { color: var(--red); font-size: 34px; }
+.result--draw { color: var(--gold); font-size: 34px; }
+.final-score { font-size: 30px; font-variant-numeric: tabular-nums; color: var(--text) !important; }
+.final-score span { color: var(--muted); margin: 0 8px; }
+.hint { font-size: 13px; color: var(--gold) !important; }
+
+.toast {
+  position: absolute; left: 50%; top: 16px; transform: translateX(-50%);
+  background: var(--panel-2); border: 1px solid var(--line);
+  padding: 10px 16px; border-radius: 999px; font-size: 14px;
+}
+.toast--error { border-color: var(--red); color: var(--red); cursor: pointer; }
+
+/* ---------- 전투 HUD ---------- */
+
+.hud {
+  position: absolute;
+  inset: 12px 16px auto;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  pointer-events: none;
+}
+
+.hpbar { width: min(260px, 38%); display: grid; gap: 4px; }
+.hpbar--right { justify-items: end; }
+.hpbar__top { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+.hpbar__track {
+  width: 100%; height: 9px; border-radius: 999px;
+  background: #10182c; border: 1px solid var(--line); overflow: hidden;
+}
+.hpbar__fill { height: 100%; transition: width 0.45s ease; }
+.hpbar__fill--ok { background: var(--green); }
+.hpbar__fill--warn { background: var(--gold); }
+.hpbar__fill--danger { background: var(--red); }
+.hpbar__num { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.hpbar__owner { margin-left: 6px; opacity: 0.7; }
+
+.badge {
+  width: 18px; height: 18px; border-radius: 5px;
+  display: grid; place-items: center; font-size: 10px; font-weight: 800;
+}
+.tier-badge-S { background: var(--gold); color: #2a1c00; }
+.tier-badge-A { background: var(--red); color: #2a000c; }
+.tier-badge-B { background: var(--blue); color: #001430; }
+.tier-badge-C { background: #4a5578; color: #dfe6ff; }
+
+.turnlog {
+  position: absolute;
+  left: 50%; bottom: 14px; transform: translateX(-50%);
+  width: min(600px, 92%);
+  background: rgba(9, 13, 26, 0.9);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 16px;
+  display: grid; gap: 3px;
+  animation: pop 0.2s ease-out;
+}
+.turnlog__head { font-size: 10px; letter-spacing: 0.16em; color: var(--muted); }
+.turnlog__line { margin: 0; font-size: 14px; }
+.turnlog__line b { color: var(--text); }
+.turnlog__recoil { margin-left: 8px; font-size: 11px; color: var(--gold); }
+.turnlog__faint { margin-left: 8px; font-size: 12px; color: var(--red); font-weight: 700; }
+.turnlog__auto { margin: 2px 0 0; font-size: 11px; color: var(--gold); }
+
+/* ---------- 기술 선택 바 ---------- */
+
+.movebar {
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  padding: 10px 20px 14px;
+}
+.movebar__label { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.movebar__sub { margin-left: 10px; opacity: 0.75; }
+.movebar__hint { font-size: 13px; color: var(--muted); margin: 0 0 8px; }
+.movebar__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+
+.move {
+  position: relative;
+  display: grid; gap: 3px; justify-items: start;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.move:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--blue); }
+.move:disabled { opacity: 0.45; cursor: not-allowed; }
+.move.is-selected { border-color: var(--green); box-shadow: 0 0 0 2px rgba(92, 255, 157, 0.25); }
+.move.is-empty { opacity: 0.3; }
+.move--struggle { max-width: 240px; border-color: var(--red); }
+
+.move__head { display: flex; align-items: center; gap: 7px; }
+.move__name { font-size: 15px; font-weight: 700; }
+.move__kind {
+  font-size: 10px; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-right: 4px;
+}
+.move__numbers { font-size: 11px; color: var(--muted); }
+.move__numbers b { color: var(--text); }
+.move__flavor {
+  font-size: 10px; color: var(--muted); line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; opacity: 0.75;
+}
+
+/* 타입 아이콘 — PokeAPI 공식 이미지 */
+.typeicon { display: block; width: auto; }
+.typeicon--badge { height: 15px; }              /* 이름이 적힌 가로 배지 */
+.typeicon--symbol { height: 16px; width: 16px; } /* 정사각 심볼 */
+.typeicon--tiny { height: 11px; width: 11px; opacity: 0.85; }
+.move__pp { font-size: 11px; color: var(--muted); }
+.move__pp b { color: var(--text); }
+.move__eff {
+  position: absolute; top: 8px; right: 10px;
+  font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 999px;
+}
+.eff-good { background: rgba(92, 255, 157, 0.18); color: var(--green); }
+.eff-bad { background: rgba(139, 151, 184, 0.18); color: var(--muted); }
+.eff-zero { background: rgba(255, 90, 122, 0.2); color: var(--red); }
+
+/* ---------- 손패 ---------- */
+
+.hand {
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  padding: 12px 20px 16px;
+}
+.hand__label { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.hand__note { margin-left: 10px; color: var(--gold); }
+.hand__grid { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+.hand__empty { color: var(--muted); font-size: 14px; }
+
+.card {
+  flex: 0 0 118px;
+  position: relative;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  padding: 10px 8px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+  font-family: inherit;
+}
+.card:hover:not(:disabled) { transform: translateY(-4px); border-color: var(--blue); }
+.card:disabled { opacity: 0.5; cursor: default; }
+.card.is-selected { border-color: var(--green); box-shadow: 0 0 0 2px rgba(92, 255, 157, 0.25); }
+
+.card__sprite { width: 62px; height: 62px; object-fit: contain; }
+.card__name { font-size: 13px; font-weight: 700; }
+.card__types { display: flex; gap: 4px; align-items: center; }
+.card__moves { display: flex; gap: 3px; margin-top: 2px; }
+.card__stats { font-size: 9px; color: var(--muted); line-height: 1.45; text-align: center; }
+.card__stats b { color: var(--text); font-weight: 600; }
+.card__stats .dot { margin: 0 3px; }
+
+.card__tier {
+  position: absolute; top: 8px; left: 8px;
+  width: 20px; height: 20px; border-radius: 6px;
+  display: grid; place-items: center;
+  font-size: 11px; font-weight: 800;
+}
+.tier-S .card__tier { background: var(--gold); color: #2a1c00; }
+.tier-A .card__tier { background: var(--red); color: #2a000c; }
+.tier-B .card__tier { background: var(--blue); color: #001430; }
+.tier-C .card__tier { background: #4a5578; color: #dfe6ff; }
+
+.chip {
+  font-size: 10px; padding: 1px 6px; border-radius: 999px;
+  background: #2a3556; color: #cfd8f5;
+}
+.type-fire { background: #7a3320; color: #ffd6c4; }
+.type-water { background: #1f406e; color: #cfe4ff; }
+.type-grass { background: #235238; color: #ccf6dd; }
+.type-electric { background: #6b5c14; color: #fff3b8; }
+.type-psychic { background: #6a2350; color: #ffcdec; }
+.type-ice { background: #245c66; color: #ccf3fb; }
+.type-dragon { background: #33307a; color: #d5d3ff; }
+.type-dark { background: #2c2622; color: #ded4cc; }
+.type-fairy { background: #6d3450; color: #ffd5e8; }
+.type-fighting { background: #6b2a24; color: #ffd0c9; }
+.type-flying { background: #3b3f70; color: #d8dbff; }
+.type-poison { background: #52246b; color: #eccdff; }
+.type-ground { background: #6a5330; color: #ffe6c2; }
+.type-rock { background: #55492c; color: #f0e2c4; }
+.type-bug { background: #43541f; color: #e2f5bd; }
+.type-ghost { background: #3a2c5c; color: #d9cdff; }
+.type-steel { background: #3d4a56; color: #d9e6f2; }
+.type-normal { background: #4a4a52; color: #e6e6ee; }

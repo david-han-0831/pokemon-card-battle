@@ -1,0 +1,6 @@
+# 개발/테스트용. 로컬에서는 이걸 설치한다.
+-r requirements.txt
+
+pytest==8.3.4
+pytest-asyncio==0.25.0
+websockets==14.1   # E2E 스크립트용 (uvicorn[standard] 에도 들어 있지만 명시)
