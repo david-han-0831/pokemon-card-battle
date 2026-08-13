@@ -150,12 +150,15 @@ cd backend
 python -m pytest -q
 ```
 
-DB 도 서버도 안 띄우고 **72개**가 1초 안에 돈다. 두 갈래다:
+DB 도 서버도 안 띄우고 **87개**가 2초 안에 돈다. 세 갈래다:
 
 - `tests/test_battle.py` — 타입 상성표, 능력치 환산, 데미지 공식, 명중, 턴 순서,
   발버둥, 라운드 종료 판정, 기술 선정 규칙, 딜링 알고리즘 (전부 순수 함수)
 - `tests/test_game_flow.py` — 가짜 소켓으로 게임 루프 전체.
-  **상대 손패·상대 PP·상대의 이번 턴 선택이 새지 않는지**가 핵심
+  **상대 손패·상대 PP·상대의 이번 턴 선택이 새지 않는지**가 핵심.
+  **DB 가 영원히 멈춰 있어도 6라운드가 끝까지 도는지**도 여기서 검증한다.
+- `tests/test_cors.py` — 배포 후 "왜 프론트에서 방이 안 만들어지지"로 헤매기 쉬운
+  CORS 허용 규칙의 경계 케이스
 
 ---
 
@@ -282,7 +285,38 @@ PokeAPI 가 준 기술을 그냥 쓰면 게임이 망가진다. 두 번 걸러�
 결과: 40마리 전부가 서로 다른 4타입 기술을 갖는다.
 `python -m scripts.seed --show-movesets` 로 확인할 수 있다.
 
-### 7. 순수 함수로 분리하면 테스트가 싸진다
+### 7. 느린 DB 를 사용자가 기다리게 하지 마라
+
+배포하고 나서 **방 만들기가 23초** 걸려 화면이 멈춘 것처럼 보이는 일이 있었다.
+원인은 서버가 올라간 NAS 가 단일 HDD 였고 그 디스크가 포화 상태였다는 것
+(iowait 22%, `select count(*)` 한 번에 2~8초).
+
+디스크는 우리가 어쩔 수 없지만, **애초에 기다릴 이유가 없는 구조**였다.
+방·손패·판정은 전부 메모리에 있고 DB 는 나중에 볼 기록일 뿐인데
+방 생성 API 가 커밋을 `await` 하고 있었다. 그래서 기록용 쓰기를 전부 뒤로 뺐다.
+
+```python
+# app/game.py — 방마다 DB 쓰기를 하나의 체인으로 이어 붙인다
+def schedule_db(self, game, make_coro):
+    previous = game.db_task
+    async def runner():
+        if previous is not None:
+            try: await previous          # 순서 보장: rooms → players → rounds (FK)
+            except Exception: pass       # 앞이 실패해도 뒤는 시도
+        try: await make_coro()
+        except Exception: logger.exception(...)
+    game.db_task = asyncio.create_task(runner())
+```
+
+`/api/types` 도 시작할 때 메모리에 올려 DB 경유를 없앴다.
+
+결과: 방 생성 **23초 → 0.3초**(연결이 따뜻할 때). 남은 지연은 Cloudflare 터널 왕복이다.
+
+교훈은 "비동기로 던져라"가 아니라 **어떤 데이터가 진행에 필요하고 어떤 게 기록일 뿐인지
+구분하라**는 것이다. 기록은 늦어도 되지만, 순서가 필요하면(FK) 그 순서는 지켜야 한다.
+`tests/test_game_flow.py` 가 "DB 가 영원히 멈춰 있어도 6라운드가 끝까지 돈다"를 검증한다.
+
+### 8. 순수 함수로 분리하면 테스트가 싸진다
 
 `battle.py` 는 DB 도 소켓도 모르고, **난수까지 인자로 받는다**(`rng`).
 그래서 데미지 공식을 `roll=1.0` 으로 고정해 정확한 값을 검증할 수 있다.
@@ -290,7 +324,7 @@ PokeAPI 가 준 기술을 그냥 쓰면 게임이 망가진다. 두 번 걸러�
 `game.py` 가 DB 를 건드리는 지점도 두 곳(`_persist_round`, `_mark_room_finished`)뿐이라,
 그것만 막으면 게임 루프 전체를 서버 없이 테스트할 수 있다.
 
-### 8. Three.js — 에셋 없이 3D처럼 보이게
+### 9. Three.js — 에셋 없이 3D처럼 보이게
 
 PokeAPI 는 **2D 스프라이트만** 준다. 그래서 섞는다:
 
@@ -300,7 +334,7 @@ PokeAPI 는 **2D 스프라이트만** 준다. 그래서 섞는다:
 
 렌더 루프는 React 바깥에서 돈다 — **매 프레임 setState 하면 초당 60번 리렌더된다.**
 
-### 9. 없는 에셋은 코드로 만든다 — 기술 이펙트
+### 10. 없는 에셋은 코드로 만든다 — 기술 이펙트
 
 **PokeAPI 에 기술 이미지는 아예 없다.** `/move/{name}` 에 sprite·image·icon 계열 키가 하나도 없다.
 있는 건 타입 아이콘(`/type/{name}` → sprites)과 한글 설명뿐이다. 그래서 나눠서 처리한다.
